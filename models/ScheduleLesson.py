@@ -11,5 +11,9 @@ class ScheduleLesson:
 
     def copy(self):
         return ScheduleLesson(
-            self.class_id, self.classroom_id, self.teacher_id, self.day, self.slot
+            class_id=self.class_id,
+            classroom_id=self.classroom_id,
+            teacher_id=self.teacher_id,
+            day=self.day,
+            slot=self.slot,
         )

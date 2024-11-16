@@ -1,6 +1,9 @@
 import pandas as pd
 from pathlib import Path
 
+from prettytable import PrettyTable
+
+from .ScheduleLesson import ScheduleLesson
 from .Group import Group
 from .Classroom import Classroom
 from .Teacher import Teacher
@@ -18,6 +21,45 @@ class Database:
         self.__populate_subjects(root)
         self.__populate_teacher_subjects(root)
         self.__populate_classes(root)
+
+    def print_groups(self):
+        table = PrettyTable(["Group", "Student count"])
+        table.add_rows([[g.name, g.student_count] for g in self.groups.values()])
+        print(table)
+
+    def print_classrooms(self):
+        table = PrettyTable(["Classroom", "Capacity"])
+        table.add_rows([[c.name, c.capacity] for c in self.classrooms.values()])
+        print(table)
+
+    def print_teachers(self):
+        table = PrettyTable(["Teacher", "Subjects"])
+        for t in self.teachers.values():
+            subjects = ", ".join(
+                [f"{self.subjects[s.subject_id].name} ({s.type})" for s in t.subjects]
+            )
+            table.add_row([t.name, subjects])
+        print(table)
+
+    def print_schedule_lessons(self, lessons: list[ScheduleLesson]):
+        table = PrettyTable(
+            ["ClassId", "Group", "Subject", "Type", "Teacher", "Classroom"]
+        )
+        for lesson in lessons:
+            cl = self.classes[lesson.class_id]
+            teacher = self.teachers[lesson.teacher_id]
+            classroom = self.classrooms[lesson.classroom_id]
+            table.add_row(
+                [
+                    f"{cl.id}",
+                    f"{cl.group.name} ({cl.group.student_count})",
+                    cl.subject.name,
+                    cl.type,
+                    teacher.name,
+                    f"{classroom.name} ({classroom.capacity})",
+                ]
+            )
+        print(table)
 
     def get_group_by_class_id(self, class_id: int):
         return self.classes[class_id].group

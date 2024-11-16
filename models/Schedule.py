@@ -21,9 +21,14 @@ class Schedule:
                 day = random.randint(1, 5)
                 slot = random.randint(1, 4)
                 self.lessons.append(
-                    ScheduleLesson(cl.id, int(classroom), teacher, day, slot)
+                    ScheduleLesson(
+                        class_id=cl.id,
+                        classroom_id=int(classroom),
+                        teacher_id=teacher,
+                        day=day,
+                        slot=slot,
+                    )
                 )
-        self.max_conflicts = 3 * len(self.lessons) * (len(self.lessons) - 1) / 2
         self.max_weak_violations = 2 * len(self.lessons)
         self.max_windows = (len(self.db.teachers) + len(self.db.groups)) * 2 * 5
 
@@ -35,32 +40,54 @@ class Schedule:
             timetable[lesson.day - 1][lesson.slot - 1].append(lesson)
         return timetable
 
-    def calculate_fitness(self):
+    def calculate_fitness(self, print_conflicts=False):
         number_of_conflicts = 0
-        weak_violations = 0
-        for i in range(len(self.lessons)):
-            lesson1 = self.lessons[i]
-            if self.__check_capacity_violation(lesson1):
-                weak_violations += 1
-            if self.__check_wrong_teacher_violation(lesson1):
-                weak_violations += 1
-            for j in range(i + 1, len(self.lessons)):
-                lesson2 = self.lessons[j]
-                if lesson1.day == lesson2.day and lesson1.slot == lesson2.slot:
-                    if lesson1.classroom_id == lesson2.classroom_id:
-                        number_of_conflicts += 1
-                    if lesson1.teacher_id == lesson2.teacher_id:
-                        number_of_conflicts += 1
-                    if lesson1.class_id == lesson2.class_id:
-                        number_of_conflicts += 1
+        cap_violations = 0
+        teacher_violations = 0
+        max_conflicts = 0
 
-        w1 = self.__calculate_student_windows()
-        w2 = self.__calculate_teacher_windows()
-        windows = w1 + w2
+        timetable = self.get_timetable()
+        for day in timetable:
+            for slot in day:
+                size = len(slot)
+                max_conflicts += 3 * size * (size - 1) / 2
+                for i in range(size):
+                    lesson1 = slot[i]
+                    if self.__check_capacity_violation(lesson1):
+                        cap_violations += 1
+                    if self.__check_wrong_teacher_violation(lesson1):
+                        teacher_violations += 1
+                    for j in range(i + 1, size):
+                        lesson2 = slot[j]
+                        if lesson1.classroom_id == lesson2.classroom_id:
+                            number_of_conflicts += 1
+                        if lesson1.teacher_id == lesson2.teacher_id:
+                            number_of_conflicts += 1
+                        if (
+                            self.db.get_group_by_class_id(lesson1.class_id).id
+                            == self.db.get_group_by_class_id(lesson2.class_id).id
+                        ):
+                            number_of_conflicts += 1
 
-        conflicts_score = number_of_conflicts / self.max_conflicts
-        weak_violations_score = weak_violations / self.max_weak_violations
+        ws = self.__calculate_student_windows()
+        wt = self.__calculate_teacher_windows()
+        windows = ws + wt
+
+        conflicts_score = number_of_conflicts / max_conflicts
+        weak_violations_score = (
+            cap_violations + teacher_violations
+        ) / self.max_weak_violations
         windows_score = windows / self.max_windows
+        self.number_of_conflicts = number_of_conflicts
+
+        if print_conflicts:
+            print(
+                f"conflicts: {number_of_conflicts} / {max_conflicts} ({conflicts_score}),  ",
+                f"capacity problems: {cap_violations},  ",
+                f"wrong teachers {teacher_violations},  ",
+                f"group windows {ws},  ",
+                f"teacher windows {wt}",
+            )
 
         if number_of_conflicts:
             self.fitness = -(
@@ -69,9 +96,17 @@ class Schedule:
                 + 0.1 * windows_score
             )
         else:
-            self.fitness = 1 - (0.666 * weak_violations_score + 0.333 * windows_score)
+            self.fitness = 1 - (0.6 * weak_violations_score + 0.4 * windows_score)
 
         return self.fitness
+
+    def print(self):
+        t = self.get_timetable()
+        for i, d in enumerate(t):
+            print(f"\n===========Day {i + 1}===========")
+            for j, s in enumerate(d):
+                print(f"\n==========Lesson {j + 1}==========")
+                self.db.print_schedule_lessons(s)
 
     def __check_capacity_violation(self, lesson: ScheduleLesson):
         return (
@@ -80,10 +115,6 @@ class Schedule:
         )
 
     def __check_wrong_teacher_violation(self, lesson: ScheduleLesson):
-        teacher = self.db.teachers.get(lesson.teacher_id)
-        if not teacher:
-            return True
-
         return not any(
             s.type == self.db.classes[lesson.class_id].type
             and s.subject_id == self.db.get_subject_by_class_id(lesson.class_id).id
@@ -122,9 +153,9 @@ class Schedule:
         teachers = self.db.subjects[cl.subject.id].teachers
         filtered_teachers = [t for t in teachers if t.type == cl.type]
         return (
-            random.choice(filtered_teachers).id
+            random.choice(filtered_teachers).teacher_id
             if filtered_teachers
-            else random.choice(teachers).id
+            else random.choice(teachers).teacher_id
             if teachers
             else random_item(self.db.teachers).id
         )
